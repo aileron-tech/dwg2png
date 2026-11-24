@@ -60,7 +60,11 @@ fn collect_dwgs(p: &Path, out: &mut Vec<PathBuf>) {
                 collect_dwgs(&e, out);
             }
         }
-    } else if p.extension().and_then(|s| s.to_str()).map(|s| s.eq_ignore_ascii_case("dwg")).unwrap_or(false) {
+    } else if p
+        .extension()
+        .and_then(|s| s.to_str())
+        .is_some_and(|s| s.eq_ignore_ascii_case("dwg") || s.eq_ignore_ascii_case("dxf"))
+    {
         out.push(p.to_path_buf());
     }
 }
@@ -167,7 +171,7 @@ fn main() {
     for inp in &args.inputs {
         collect_dwgs(inp, &mut dwgs);
     }
-    eprintln!("found {} DWG file(s)", dwgs.len());
+    eprintln!("found {} drawing(s) (DWG/DXF)", dwgs.len());
 
     let mut reports: Vec<FileReport> = Vec::new();
     for (i, dwg) in dwgs.iter().enumerate() {

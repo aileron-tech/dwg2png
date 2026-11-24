@@ -1,4 +1,4 @@
-//! DWG -> multipage PNG renderer + metadata indexer.
+//! DWG/DXF -> multipage PNG renderer + metadata indexer.
 //!
 //! Boundaries: `parse` (acadrust adapter, here) -> `pages`/`tessellate`
 //! (geometry) -> `render` (raster) and `metadata` (index). `report` renders
@@ -19,11 +19,76 @@ use std::path::Path;
 use std::time::Instant;
 
 use ab_glyph::FontVec;
+use acadrust::document::CadDocument;
 use acadrust::io::dwg::{DwgReadOptions, DwgReader};
+use acadrust::io::dxf::{DxfReader, DxfReaderConfiguration};
 
 use crate::metadata::{extract, IndexDoc};
 use crate::pages::build_pages;
 use crate::render::{render_page, RenderOpts, RenderedLabel};
+
+/// The drawing formats the reader understands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CadFormat {
+    Dwg,
+    Dxf,
+}
+
+/// The format of a drawing, from the first bytes of the file. A DWG starts with its
+/// version code ("AC" and four digits). A binary DXF starts with a fixed sentinel; a
+/// text DXF starts with group code 0 and SECTION, or with a 999 comment.
+pub fn detect_format(head: &[u8]) -> Option<CadFormat> {
+    if head.len() >= 6 && &head[..2] == b"AC" && head[2..6].iter().all(u8::is_ascii_digit) {
+        return Some(CadFormat::Dwg);
+    }
+    if head.starts_with(b"AutoCAD Binary DXF") {
+        return Some(CadFormat::Dxf);
+    }
+    let text = String::from_utf8_lossy(head);
+    let mut lines = text.trim_start_matches('\u{feff}').lines().map(str::trim).filter(|l| !l.is_empty());
+    match (lines.next(), lines.next()) {
+        (Some("999"), _) | (Some("0"), Some("SECTION")) => Some(CadFormat::Dxf),
+        _ => None,
+    }
+}
+
+/// The format to read `path` as: by content, else by a `.dxf` extension, else DWG.
+fn format_of(path: &Path) -> CadFormat {
+    use std::io::Read;
+    let mut head = [0u8; 256];
+    let read = std::fs::File::open(path).and_then(|mut f| f.read(&mut head)).unwrap_or(0);
+    detect_format(&head[..read]).unwrap_or_else(|| {
+        let is_dxf = path.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("dxf"));
+        if is_dxf {
+            CadFormat::Dxf
+        } else {
+            CadFormat::Dwg
+        }
+    })
+}
+
+/// Read a DWG or DXF file into a document. Both readers run in failsafe mode, and a
+/// panic inside the parser is caught: a malformed file becomes an error, not a crash.
+fn read_document(path: &Path) -> Result<CadDocument, String> {
+    let read = match format_of(path) {
+        CadFormat::Dwg => {
+            let mut reader = DwgReader::from_file_with_options(path, DwgReadOptions::failsafe())
+                .map_err(|e| format!("open: {e}"))?;
+            std::panic::catch_unwind(AssertUnwindSafe(move || reader.read()))
+        }
+        CadFormat::Dxf => {
+            let reader = DxfReader::from_file(path)
+                .map_err(|e| format!("open: {e}"))?
+                .with_configuration(DxfReaderConfiguration { failsafe: true, default_encoding: None });
+            std::panic::catch_unwind(AssertUnwindSafe(move || reader.read()))
+        }
+    };
+    match read {
+        Ok(Ok(doc)) => Ok(doc),
+        Ok(Err(e)) => Err(format!("read: {e}")),
+        Err(_) => Err("read: parser panicked (caught)".to_string()),
+    }
+}
 
 /// A rendered page and where its PNG was written (relative to the report).
 #[derive(Debug, Clone)]
@@ -76,9 +141,9 @@ pub struct FileReport {
     pub comparison: Option<Comparison>,
 }
 
-/// Parse, render every page, and extract metadata for one DWG file.
+/// Parse, render every page, and extract metadata for one DWG or DXF file.
 ///
-/// Parsing and rendering are wrapped in `catch_unwind`: a malformed DWG that
+/// Parsing and rendering are wrapped in `catch_unwind`: a malformed drawing that
 /// panics the parser degrades to an error row instead of taking down a batch.
 pub struct OutDirs<'a> {
     pub img_dir: &'a Path,
@@ -111,23 +176,10 @@ pub fn process_file(
     };
 
     let t0 = Instant::now();
-    let mut reader = match DwgReader::from_file_with_options(path, DwgReadOptions::failsafe()) {
-        Ok(r) => r,
+    let doc = match read_document(path) {
+        Ok(doc) => doc,
         Err(e) => {
-            report.error = Some(format!("open: {e}"));
-            return report;
-        }
-    };
-
-    let read = std::panic::catch_unwind(AssertUnwindSafe(|| reader.read()));
-    let doc = match read {
-        Ok(Ok(doc)) => doc,
-        Ok(Err(e)) => {
-            report.error = Some(format!("read: {e}"));
-            return report;
-        }
-        Err(_) => {
-            report.error = Some("read: parser panicked (caught)".to_string());
+            report.error = Some(e);
             return report;
         }
     };
@@ -225,12 +277,10 @@ fn write_tiles(dirs: &OutDirs, stem: &str, raster: &crate::render::Raster) -> Ve
     refs
 }
 
-/// Convenience: index a DWG to JSON (metadata only, no rendering).
+/// Convenience: index a DWG or DXF to JSON (metadata only, no rendering).
 pub fn index_to_json(path: &Path) -> Result<IndexDoc, String> {
-    let mut reader = DwgReader::from_file_with_options(path, DwgReadOptions::failsafe())
-        .map_err(|e| format!("open: {e}"))?;
     let t0 = Instant::now();
-    let doc = reader.read().map_err(|e| format!("read: {e}"))?;
+    let doc = read_document(path)?;
     let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("?");
     Ok(extract(&doc, name, t0.elapsed().as_millis()))
 }

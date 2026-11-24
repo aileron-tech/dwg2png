@@ -11,7 +11,10 @@ vision-language model can use directly:
 | `tiles/*.png` + `tiles.json` | ~1500 px readable crops, each with the labels inside it | VLM input, image embeddings |
 | `img/*.png` | one PNG per layout (Model space + paper-space sheets) | previews, page-level context |
 
-One command takes a DWG, or a whole directory tree of them, to a folder of
+**Input formats:** DWG (R13-R2018) and DXF (text and binary). The reader is
+chosen from the content of the file, not its extension. DWF is not supported.
+
+One command takes a drawing, or a whole directory tree of them, to a folder of
 indexable files:
 
 ```sh
@@ -75,7 +78,7 @@ Releases are produced automatically by `.github/workflows/release.yml` when a
 ## Usage
 
 ```sh
-# Render + index a file or a whole directory tree of .dwg files
+# Render + index a file or a whole directory tree of .dwg and .dxf files
 dwg2png <file-or-dir> [more...] --out out [--size PX] [--tiles] [--font TTF] [--no-compare]
 
 # Recommended for VLM ingestion: high-res + readable tiles + text layer

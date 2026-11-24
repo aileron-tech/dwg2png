@@ -97,3 +97,27 @@ When a companion program is missing, `dwg2png --mcp` and `--apify` now print
 the link to its install instructions instead of a Homebrew command: each
 companion has its own tap and installers, documented in its README.
 Verified with `cargo test --release` (the four companion tests pass).
+
+## 2026-11-24 - DXF input
+
+**Goal:** Read DXF as well as DWG.
+
+**Changes:**
+- `src/lib.rs`: `detect_format` recognises a drawing from its first bytes (DWG
+  version code, binary DXF sentinel, text DXF opening); `read_document` picks
+  the acadrust DWG or DXF reader from it, falling back to the extension. Both
+  run in failsafe mode with the parser wrapped in `catch_unwind`.
+  `process_file` and `index_to_json` use it.
+- `src/main.rs`: folders are searched for `.dwg` and `.dxf`.
+- No change to geometry, rendering or metadata: both readers produce the same
+  document type.
+
+**Verification:** PASS. `cargo test --release`: 5 new tests in
+`tests/dxf_input.rs` (REQ-CLI-010 to 014) run the built CLI on DXF written at
+test time: labels and layers match the DWG of the same drawing; a folder with
+both formats; a DXF misnamed `.dwg`; format detection. A hand-written minimal
+R12-style DXF also rendered. A truncated DXF yields an empty page with an
+error notification (failsafe), a file of plain text fails with a parse error.
+
+**Not verified:** binary DXF end to end (only its detection), DXF with paper
+space layouts, and DXF files from other CAD programs.
