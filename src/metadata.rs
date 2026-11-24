@@ -6,7 +6,7 @@ use acadrust::document::CadDocument;
 use acadrust::entities::EntityType;
 use serde::Serialize;
 
-use crate::text::strip_mtext;
+use crate::text::{decode_text_codes, strip_mtext};
 
 const MAX_TEXT_SAMPLES: usize = 60;
 const MAX_ATTRS: usize = 60;
@@ -91,8 +91,10 @@ pub fn extract(doc: &CadDocument, file: &str, parse_ms: u128) -> IndexDoc {
     for e in doc.entities() {
         *histogram.entry(kind(e).to_string()).or_default() += 1;
         match e {
-            EntityType::Text(t) => push_text(&t.value, &mut text_samples, &mut seen_text),
-            EntityType::MText(m) => push_text(&strip_mtext(&m.value), &mut text_samples, &mut seen_text),
+            EntityType::Text(t) => push_text(&decode_text_codes(&t.value), &mut text_samples, &mut seen_text),
+            EntityType::MText(m) => {
+                push_text(&decode_text_codes(&strip_mtext(&m.value)), &mut text_samples, &mut seen_text)
+            }
             EntityType::AttributeEntity(a) => {
                 if attributes.len() < MAX_ATTRS && !a.value.trim().is_empty() {
                     attributes.push(Attr { tag: a.tag.clone(), value: a.value.clone() });

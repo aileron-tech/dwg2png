@@ -121,3 +121,38 @@ error notification (failsafe), a file of plain text fails with a parse error.
 
 **Not verified:** binary DXF end to end (only its detection), DXF with paper
 space layouts, and DXF files from other CAD programs.
+
+## 2026-11-24 - Text fidelity, found on real sample drawings
+
+**Goal:** Verify on drawings from other sources. Six public files were run:
+four Autodesk AutoCAD samples (DWG AC1021 and AC1024: two architectural, one
+blocks-and-tables floor plan, one mechanical) and two DXF files from open
+source repositories (a house floor plan, AC1018; curtain-wall details with four
+sheets, AC1027). All six parsed with no reader errors: 15 pages, 99 to 4500
+entities, 6 to 49 layers.
+
+**Problems found and fixed:**
+- MTEXT paragraph codes (`\\pi-12,l12,t12;`) were taken for paragraph breaks
+  and leaked into labels; stacked fractions (`\\S1/2;`) leaked as `S1/2;`; the
+  underline, overline and strike toggles (`\\L \\O \\K`), which take no value,
+  swallowed the text up to the next `;`. `strip_mtext` now follows the MTEXT
+  code table; `\\U+XXXX` is decoded.
+- `%%` control codes of TEXT, attributes and MTEXT (`%%u`, `%%d`, `%%p`, `%%c`,
+  `%%nnn`) appeared verbatim in labels. New `decode_text_codes`.
+- Attributes flagged invisible are no longer drawn or labelled; they stay in
+  the index.
+
+**Known limitation:** In the Autodesk blocks-and-tables sample, window tags
+are drawn with all their attribute values (manufacturer, size, cost), which
+AutoCAD hides. The parser reports none of that file's 492 attributes or 240
+attribute definitions as invisible, so the renderer cannot tell.
+
+**Verification:** PASS. `cargo test --release`: 6 new unit tests in
+`src/text.rs` (REQ-CLI-020 to 025) and 3 end-to-end tests in
+`tests/text_fidelity.rs` (REQ-CLI-030 to 032). Re-rendered the six samples:
+labels such as `MASTER BEDROOM`, `ELEV. 5'-10 1/2" TOP OF LANDING` and
+`45 deg TO 60 deg` (with the degree sign) are now clean. Two pages were
+inspected by eye: the DXF house plan and the two-floor plan.
+
+**Not verified:** an Audi A3 drawing. Every source found requires an account
+or payment.

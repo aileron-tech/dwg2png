@@ -17,7 +17,7 @@ use acadrust::entities::EntityType;
 
 use crate::color::resolve;
 use crate::model::{Aff, Label, Prim, Rgb, P};
-use crate::text::{strip_mtext, text_contours};
+use crate::text::{decode_text_codes, strip_mtext, text_contours};
 
 const ARC_STEP: f64 = 0.12; // ~7 degrees per segment
 const DEFAULT_WIDTH: f32 = 1.0;
@@ -114,17 +114,19 @@ pub fn emit(ctx: &Ctx, e: &EntityType, aff: &Aff, inherited: Rgb, depth: usize, 
         EntityType::Text(t) => {
             let col = ecolor(ctx, &t.common.color, &t.common.layer, inherited);
             let h = pos_h(t.height, ctx.default_text_h);
-            emit_text(ctx, &t.value, h, P::new(t.insertion_point.x, t.insertion_point.y), t.rotation, aff, col, &t.common.layer, sink);
+            emit_text(ctx, &decode_text_codes(&t.value), h, P::new(t.insertion_point.x, t.insertion_point.y), t.rotation, aff, col, &t.common.layer, sink);
         }
         EntityType::MText(m) => {
             let col = ecolor(ctx, &m.common.color, &m.common.layer, inherited);
             let h = pos_h(m.height, ctx.default_text_h);
             emit_mtext(ctx, &m.value, h, P::new(m.insertion_point.x, m.insertion_point.y), m.rotation, aff, col, &m.common.layer, sink);
         }
-        EntityType::AttributeEntity(a) => {
+        // An invisible attribute carries data, not ink: it stays in the index and is
+        // neither drawn nor given a label.
+        EntityType::AttributeEntity(a) if a.is_visible() && !a.common.invisible => {
             let col = ecolor(ctx, &a.common.color, &a.common.layer, inherited);
             let h = pos_h(a.height, ctx.default_text_h);
-            emit_text(ctx, &a.value, h, P::new(a.insertion_point.x, a.insertion_point.y), a.rotation, aff, col, &a.common.layer, sink);
+            emit_text(ctx, &decode_text_codes(&a.value), h, P::new(a.insertion_point.x, a.insertion_point.y), a.rotation, aff, col, &a.common.layer, sink);
         }
         EntityType::Dimension(d) => {
             let base = d.base();
@@ -161,10 +163,10 @@ pub fn emit(ctx: &Ctx, e: &EntityType, aff: &Aff, inherited: Rgb, depth: usize, 
                     }
                 }
             }
-            for attr in &ins.attributes {
+            for attr in ins.attributes.iter().filter(|a| a.is_visible() && !a.common.invisible) {
                 let col = ecolor(ctx, &attr.common.color, &attr.common.layer, ink);
                 let h = pos_h(attr.height, ctx.default_text_h);
-                emit_text(ctx, &attr.value, h, P::new(attr.insertion_point.x, attr.insertion_point.y), attr.rotation, aff, col, &attr.common.layer, sink);
+                emit_text(ctx, &decode_text_codes(&attr.value), h, P::new(attr.insertion_point.x, attr.insertion_point.y), attr.rotation, aff, col, &attr.common.layer, sink);
             }
         }
         // Not rendered in v1: AttributeDefinition (template), Hatch, Leader,
@@ -233,10 +235,11 @@ fn emit_text(ctx: &Ctx, text: &str, h: f64, origin: P, rotation: f64, aff: &Aff,
 
 #[allow(clippy::too_many_arguments)]
 fn emit_mtext(ctx: &Ctx, raw: &str, h: f64, origin: P, rot: f64, aff: &Aff, color: Rgb, layer: &str, sink: &mut Sink) {
-    let normalized = raw.replace("\\P", "\n").replace("\\p", "\n");
+    // Only \P breaks a paragraph; \p starts a paragraph-format code and is not a break.
+    let normalized = raw.replace("\\P", "\n");
     let (sin, cos) = rot.sin_cos();
     for (k, line) in normalized.split('\n').enumerate() {
-        let plain = strip_mtext(line);
+        let plain = decode_text_codes(&strip_mtext(line));
         if plain.trim().is_empty() {
             continue;
         }
