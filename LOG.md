@@ -156,3 +156,5 @@ inspected by eye: the DXF house plan and the two-floor plan.
 
 **Not verified:** an Audi A3 drawing. Every source found requires an account
 or payment.
+
+- Add SVG input and optional per-layout vector SVG export for DWG, DXF and SVG. Render PNG previews and tiles from the exported geometry when SVG is enabled so that reopening the export at the same size yields the same pixels.

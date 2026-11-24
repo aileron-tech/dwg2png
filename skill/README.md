@@ -4,10 +4,10 @@
 >
 > Ships in the [`aileron-tech/dwg2png`](https://github.com/aileron-tech/dwg2png) tool repo under `skill/`.
 
-**DWG ingestion for AI applications.** Turn AutoCAD **DWG** drawings into
-multipage PNGs, readable tiles, a **lossless, position-referenced text layer**
-and a metadata index, ready for RAG, search and VLM pipelines. Pure-Rust,
-offline, no GPU or CAD engine.
+**Drawing ingestion for AI applications.** Turn AutoCAD **DWG** and **DXF**
+files or **SVG** drawings into PNG previews, vector SVG pages, readable tiles, native text with
+pixel positions, and a metadata index for RAG, search and vision models.
+The tool runs offline on the CPU.
 
 ---
 
@@ -15,7 +15,7 @@ offline, no GPU or CAD engine.
 
 This skill helps an agent run the `dwg2png` tool and consume its output:
 
-* Render every DWG layout (Model space + paper sheets, via viewport projection) to PNG
+* Render each DWG or DXF layout, or the single SVG canvas, to PNG
 * Emit a text layer: every label as **exact text + pixel box** (no OCR)
 * Emit readable tiles so a VLM can read labels visually
 * Extract a per-file index: layers, blocks, title-block attributes, entity histogram
@@ -26,14 +26,14 @@ This skill helps an agent run the `dwg2png` tool and consume its output:
 ## When to Use This Skill
 
 **Triggers:**
-* `.dwg` files, AutoCAD drawings, blueprints, engineering/construction/survey drawings
+* DWG, DXF, and SVG drawings and blueprints
 * "DWG to PNG", rendering or previewing CAD drawings
 * Extracting text / labels / title-block attributes from CAD
 * Building a RAG or multimodal pipeline over CAD drawings
 * Running the `dwg2png` CLI or Docker image
 
 **Use cases:**
-* Convert a folder of DWGs into page previews + tiles for review
+* Convert a folder of drawings into page previews + tiles for review
 * Pull exact label text + positions out of a drawing (no OCR)
 * Index title-block attributes (IDs, areas, etc.) and layer/block inventory
 * Feed drawings into a retrieval chain with grounded citations
@@ -56,7 +56,7 @@ gh release download --repo aileron-tech/dwg2png --pattern '*linux*'
 ### Run
 
 ```bash
-dwg2png input/ --out out --size 6000 --tiles --no-compare
+dwg2png input/ --out out --size 6000 --tiles --svg --no-compare
 ```
 
 ### Output (`out/`)

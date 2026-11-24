@@ -1,4 +1,4 @@
-//! dwg2png CLI: render DWG files to multipage PNG + JSON index + HTML report.
+//! dwg2png CLI: render DWG, DXF and SVG into page images and metadata.
 //!
 //! Usage:
 //!   dwg2png <file-or-dir> [more...] [--out DIR] [--font TTF] [--no-compare]
@@ -12,7 +12,7 @@ use std::process::Command;
 
 use dwg2png::render::RenderOpts;
 use dwg2png::report::write_report;
-use dwg2png::{process_file, Comparison, FileReport, OutDirs};
+use dwg2png::{process_file, process_file_with_svg, Comparison, FileReport, OutDirs};
 
 const DEFAULT_FONT: &str = "/System/Library/Fonts/Supplemental/Arial.ttf";
 
@@ -23,6 +23,7 @@ struct Args {
     compare: bool,
     size: f32,
     tiles: Option<u32>,
+    svg: bool,
 }
 
 fn parse_args() -> Args {
@@ -32,6 +33,7 @@ fn parse_args() -> Args {
     let mut compare = true;
     let mut size = 3000.0_f32;
     let mut tiles = None;
+    let mut svg = false;
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -41,6 +43,7 @@ fn parse_args() -> Args {
             "--size" => {
                 size = it.next().expect("--size needs a value").parse().expect("--size must be a number")
             }
+            "--svg" => svg = true,
             "--tiles" => tiles = Some(1500),
             "--tile-size" => {
                 tiles = Some(it.next().expect("--tile-size needs a value").parse().expect("--tile-size must be a number"))
@@ -48,22 +51,22 @@ fn parse_args() -> Args {
             _ => inputs.push(PathBuf::from(a)),
         }
     }
-    Args { inputs, out, font, compare, size, tiles }
+    Args { inputs, out, font, compare, size, tiles, svg }
 }
 
-fn collect_dwgs(p: &Path, out: &mut Vec<PathBuf>) {
+fn collect_drawings(p: &Path, out: &mut Vec<PathBuf>) {
     if p.is_dir() {
         if let Ok(rd) = std::fs::read_dir(p) {
             let mut entries: Vec<_> = rd.flatten().map(|e| e.path()).collect();
             entries.sort();
             for e in entries {
-                collect_dwgs(&e, out);
+                collect_drawings(&e, out);
             }
         }
     } else if p
         .extension()
         .and_then(|s| s.to_str())
-        .is_some_and(|s| s.eq_ignore_ascii_case("dwg") || s.eq_ignore_ascii_case("dxf"))
+        .is_some_and(|s| s.eq_ignore_ascii_case("dwg") || s.eq_ignore_ascii_case("dxf") || s.eq_ignore_ascii_case("svg"))
     {
         out.push(p.to_path_buf());
     }
@@ -125,16 +128,25 @@ fn rasterize_pdf(pdf: &Path, img_dir: &Path, stem: &str) -> Option<String> {
     }
 }
 
+fn usage() {
+    eprintln!("usage: dwg2png <file-or-dir>... [--out DIR] [--font TTF] [--size PX] [--tiles] [--svg] [--no-compare]");
+    eprintln!("       dwg2png --mcp | --apify   (run the MCP server or the Apify Actor)");
+}
+
 fn main() {
     let mut cli = std::env::args().skip(1);
-    if let Some(companion) = cli.next().as_deref().and_then(plugin::plugin_for) {
+    let first = cli.next();
+    if matches!(first.as_deref(), Some("--help" | "-h")) {
+        usage();
+        return;
+    }
+    if let Some(companion) = first.as_deref().and_then(plugin::plugin_for) {
         let rest: Vec<String> = cli.collect();
         std::process::exit(plugin::run(companion, &rest));
     }
     let args = parse_args();
     if args.inputs.is_empty() {
-        eprintln!("usage: dwg2png <file-or-dir>... [--out DIR] [--font TTF] [--size PX] [--no-compare]");
-        eprintln!("       dwg2png --mcp | --apify   (run the MCP server or the Apify Actor)");
+        usage();
         std::process::exit(1);
     }
     let opts = RenderOpts {
@@ -169,14 +181,15 @@ fn main() {
 
     let mut dwgs = Vec::new();
     for inp in &args.inputs {
-        collect_dwgs(inp, &mut dwgs);
+        collect_drawings(inp, &mut dwgs);
     }
-    eprintln!("found {} drawing(s) (DWG/DXF)", dwgs.len());
+    eprintln!("found {} drawing(s) (DWG/DXF/SVG)", dwgs.len());
 
+    let process = if args.svg { process_file_with_svg } else { process_file };
     let mut reports: Vec<FileReport> = Vec::new();
     for (i, dwg) in dwgs.iter().enumerate() {
         eprint!("[{:>2}/{}] {} ... ", i + 1, dwgs.len(), dwg.file_name().and_then(|s| s.to_str()).unwrap_or("?"));
-        let mut rep = process_file(dwg, &dirs, &font, i, opts);
+        let mut rep = process(dwg, &dirs, &font, i, opts);
 
         // write JSON index
         if let Some(ix) = &rep.index {

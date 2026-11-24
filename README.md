@@ -1,18 +1,17 @@
 # dwg2png
 
-**DWG ingestion for AI applications.** dwg2png turns a binary AutoCAD DWG
-(R13-R2018) into files that a RAG pipeline, a search index or a
-vision-language model can use directly:
+**Drawing ingestion for AI applications.** dwg2png turns DWG, DXF and SVG drawings into files for RAG, full-text search and vision models.
 
 | Output | What it holds | Use it for |
 |--------|---------------|------------|
-| `labels/*.json` | every label as exact text + pixel box, page, layer and color, read from the DWG (no OCR) | text embeddings, full-text search, grounded citations |
+| `labels/*.json` | every label as exact text + pixel box, page, layer and color, read from the drawing (no OCR) | text embeddings, full-text search, grounded citations |
 | `json/*.json` | per-file index: layers, blocks, title-block attributes, text, layouts | structured filters and metadata search |
 | `tiles/*.png` + `tiles.json` | ~1500 px readable crops, each with the labels inside it | VLM input, image embeddings |
-| `img/*.png` | one PNG per layout (Model space + paper-space sheets) | previews, page-level context |
+| `img/*.png` | one PNG per CAD layout or SVG canvas | previews, page-level context |
+| `img/*.svg` | one vector page per PNG when `--svg` is enabled | zoomable drawings, DWG/DXF-to-SVG conversion |
 
-**Input formats:** DWG (R13-R2018) and DXF (text and binary). The reader is
-chosen from the content of the file, not its extension. DWF is not supported.
+**Input formats:** DWG (R13-R2018), DXF (text and binary), and UTF-8 SVG. The reader is
+chosen from the content of the file. SVG native text is indexed when present. Labels outlined as paths stay visible in the output.
 
 One command takes a drawing, or a whole directory tree of them, to a folder of
 indexable files:
@@ -30,7 +29,7 @@ No GPL (LibreDWG avoided), no FFI, no GPU, no external CAD engine.
 
 ## Use in AI pipelines (RAG, search, VLM)
 
-dwg2png turns an opaque binary DWG into retrievable, citable artifacts. Run the
+dwg2png turns drawings into retrievable, citable artifacts. Run the
 container as an ingestion step, then index its output:
 
 ```
@@ -52,7 +51,7 @@ Two retrieval channels, both grounded:
   each tile's `tiles.json` carries the labels inside that crop, so a retrieved
   tile arrives with its text already extracted — feed both to a VLM.
 
-Why it fits RAG: the text is 100% accurate (straight from the DWG, no OCR drift),
+Why it fits RAG: native text comes from the drawing without OCR,
 positionally grounded for citations, multimodal, deterministic, and fully
 offline. A practical chunking strategy: one chunk per label cluster (same layer,
 nearby bbox) with `{file, page, layer, bbox}` metadata; link clusters to their
@@ -78,8 +77,8 @@ Releases are produced automatically by `.github/workflows/release.yml` when a
 ## Usage
 
 ```sh
-# Render + index a file or a whole directory tree of .dwg and .dxf files
-dwg2png <file-or-dir> [more...] --out out [--size PX] [--tiles] [--font TTF] [--no-compare]
+# Render + index a file or a whole directory tree of .dwg, .dxf and .svg files
+dwg2png <file-or-dir> [more...] --out out [--size PX] [--tiles] [--svg] [--font TTF] [--no-compare]
 
 # Recommended for VLM ingestion: high-res + readable tiles + text layer
 dwg2png drawings/ --out out --size 6000 --tiles
@@ -99,13 +98,25 @@ Outputs under `--out`:
 - `json/fNN.json` &mdash; the searchable `IndexDoc` per file
 - `report.html` &mdash; self-contained report: thumbnails, a **toggleable SVG text overlay**, ground-truth comparisons, and the tile crops
 
-### Reading all labels (VLM / search)
+#To convert CAD to SVG and verify the matching PNG:
+
+```sh
+dwg2png drawing.dxf --out out --size 2048 --svg --no-compare
+dwg2png out/img/f00-p00.svg --out replay --size 2048 --no-compare
+cmp out/img/f00-p00.png replay/img/f00-p00.png
+```
+
+Use the same long-edge size as the exported page. When SVG export is enabled,
+the PNG and tiles come from the exported geometry. SVG input is rendered offline.
+References to external resources are ignored.
+
+## Reading all labels (VLM / search)
 
 Tiny CAD labels are sub-pixel against a large drawing extent, and VLMs downscale
 images on input &mdash; so no single raster makes every label legible. Two
 complementary channels solve this:
 
-1. **Text layer** (`labels/*.json`) &mdash; the strings come straight from the DWG,
+1. **Text layer** (`labels/*.json`) &mdash; the strings come straight from the drawing,
    so they are 100% accurate (no OCR), each anchored to a pixel position. This is
    the reliable channel for "read every label."
 2. **Tiles** (`--tiles`) &mdash; ~1500 px crops where text is large enough to read

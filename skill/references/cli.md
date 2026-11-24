@@ -3,12 +3,12 @@
 ## Synopsis
 
 ```
-dwg2png <file-or-dir>... [--out DIR] [--size PX] [--tiles] [--tile-size N]
+dwg2png <file-or-dir>... [--out DIR] [--size PX] [--tiles] [--tile-size N] [--svg]
                          [--font TTF] [--no-compare]
 ```
 
 Positional arguments are files or directories; directories are recursed for
-`*.dwg` (case-insensitive). Multiple inputs may be given.
+DWG, DXF and SVG files (case-insensitive). Multiple inputs may be given.
 
 ## Flags
 
@@ -20,6 +20,10 @@ Positional arguments are files or directories; directories are recursed for
 | `--tile-size N` | 1500 | Tile edge in pixels (256–4000). Implies tiling. |
 | `--font TTF` | macOS Arial | TrueType font for text rendering. |
 | `--no-compare` | off | Skip ground-truth PDF comparison (avoids needing `pdftoppm`). |
+
+`--svg` writes a vector page next to each PNG. For DWG or DXF this
+converts the rendered CAD geometry into SVG paths. Run the CLI on the
+exported SVG at the same long-edge size to reproduce the PNG pixels.
 
 Environment: `DWG2PNG_FONT` sets the default font path (overridden by `--font`).
 

@@ -5,7 +5,7 @@ members = ["probe"]
 name = "dwg2png"
 version = "0.1.0"
 edition = "2021"
-description = "DWG -> multipage PNG renderer and metadata indexer (pure-Rust, acadrust-backed)"
+description = "DWG, DXF and SVG ingestion: PNG previews, vector SVG, native text and metadata"
 license = "MPL-2.0"
 
 [[bin]]
@@ -16,6 +16,7 @@ path = "src/main.rs"
 # Pinned exactly: early-stage parser, treat as a fixed foundation (see README risk notes).
 acadrust = { version = "=0.4.0", features = ["serde"] }
 tiny-skia = "0.11"
+resvg = { version = "=0.45.1", default-features = false, features = ["text", "raster-images"] }
 ab_glyph = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

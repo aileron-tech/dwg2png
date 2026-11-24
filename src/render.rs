@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 use tiny_skia::{
-    Color, FillRule, IntRect, LineCap, LineJoin, Mask, Paint, PathBuilder, Pixmap, Stroke, Transform,
+    Color, FillRule, IntRect, LineCap, LineJoin, Mask, Paint, Path, PathBuilder, Pixmap, Stroke, Transform,
 };
 
 use crate::model::{Bounds, Label, Page, Prim, Rgb};
@@ -69,9 +69,20 @@ pub struct Raster {
 }
 
 pub fn render_page(page: &Page, opts: RenderOpts) -> Result<Raster, String> {
+    render_page_with_svg(page, opts, false).map(|(raster, _)| raster)
+}
+
+pub(crate) fn render_page_with_svg(
+    page: &Page,
+    opts: RenderOpts,
+    export_svg: bool,
+) -> Result<(Raster, Option<String>), String> {
     let b = page.bounds;
     if !b.is_valid() {
-        return placeholder();
+        return placeholder().map(|raster| {
+            let svg = export_svg.then(|| crate::svg::blank(raster.width, raster.height, "#f5f5f5"));
+            (raster, svg)
+        });
     }
     let bw = b.width();
     let bh = b.height();
@@ -95,22 +106,42 @@ pub fn render_page(page: &Page, opts: RenderOpts) -> Result<Raster, String> {
     let ty = (ch as f64 - used_h) / 2.0 + scale * b.maxy; // y' = -scale*y + ty
     let xf = Transform::from_row(scale as f32, 0.0, 0.0, -scale as f32, tx as f32, ty as f32);
 
-    let mut pixmap = Pixmap::new(cw, ch).ok_or("failed to allocate pixmap")?;
-    pixmap.fill(Color::WHITE);
-
-    for ov in &page.overlays {
-        let mask = rect_mask(cw, ch, ov.clip, xf);
-        draw_prims(&mut pixmap, &ov.prims, xf, scale, mask.as_ref());
-    }
-    draw_prims(&mut pixmap, &page.prims, xf, scale, None);
+    let (pixmap, svg) = if export_svg {
+        let mut svg = crate::svg::start(cw, ch, "#ffffff");
+        for (index, ov) in page.overlays.iter().enumerate() {
+            let paths = batch_prims(&ov.prims, scale);
+            crate::svg::draw_paths(&mut svg, &paths, xf, Some((index, ov.clip)));
+        }
+        crate::svg::draw_paths(&mut svg, &batch_prims(&page.prims, scale), xf, None);
+        svg.push_str("</svg>");
+        (crate::svg::rasterize_export(&svg, cw, ch)?, Some(svg))
+    } else {
+        let mut pixmap = Pixmap::new(cw, ch).ok_or("failed to allocate pixmap")?;
+        pixmap.fill(Color::WHITE);
+        for ov in &page.overlays {
+            let mask = rect_mask(cw, ch, ov.clip, xf);
+            draw_paths(&mut pixmap, &batch_prims(&ov.prims, scale), xf, mask.as_ref());
+        }
+        draw_paths(&mut pixmap, &batch_prims(&page.prims, scale), xf, None);
+        (pixmap, None)
+    };
 
     let labels = project_labels(&page.labels, scale, tx, ty, cw, ch);
+    finish_raster(pixmap, labels, opts).map(|raster| (raster, svg))
+}
+
+pub(crate) fn finish_raster(
+    pixmap: Pixmap,
+    labels: Vec<RenderedLabel>,
+    opts: RenderOpts,
+) -> Result<Raster, String> {
+    let (width, height) = (pixmap.width(), pixmap.height());
     let tiles = match opts.tile_px {
-        Some(tp) if cw > tp || ch > tp => build_tiles(&pixmap, &labels, tp)?,
+        Some(tp) if width > tp || height > tp => build_tiles(&pixmap, &labels, tp)?,
         _ => Vec::new(),
     };
     let png = pixmap.encode_png().map_err(|e| format!("encode png: {e}"))?;
-    Ok(Raster { png, width: cw, height: ch, labels, tiles })
+    Ok(Raster { png, width, height, labels, tiles })
 }
 
 /// Slice the full pixmap into a grid of ~`tp`-sized tiles, partitioning labels
@@ -172,7 +203,13 @@ fn project_labels(labels: &[Label], scale: f64, tx: f64, ty: f64, cw: u32, ch: u
     out
 }
 
-fn draw_prims(pixmap: &mut Pixmap, prims: &[Prim], xf: Transform, scale: f64, mask: Option<&Mask>) {
+pub(crate) struct PaintPath {
+    pub(crate) path: Path,
+    pub(crate) color: (u8, u8, u8),
+    pub(crate) stroke_width: Option<f32>,
+}
+
+fn batch_prims(prims: &[Prim], scale: f64) -> Vec<PaintPath> {
     let mut line_groups: BTreeMap<(u8, u8, u8), PathBuilder> = BTreeMap::new();
     let mut fill_groups: BTreeMap<(u8, u8, u8), PathBuilder> = BTreeMap::new();
     let mut dot_groups: BTreeMap<(u8, u8, u8), PathBuilder> = BTreeMap::new();
@@ -216,25 +253,23 @@ fn draw_prims(pixmap: &mut Pixmap, prims: &[Prim], xf: Transform, scale: f64, ma
         }
     }
 
-    let stroke = Stroke {
-        width: (1.0 / scale) as f32,
-        line_cap: LineCap::Round,
-        line_join: LineJoin::Round,
-        ..Default::default()
-    };
-    for (c, pb) in line_groups {
-        if let Some(path) = pb.finish() {
-            pixmap.stroke_path(&path, &paint(c), &stroke, xf, mask);
-        }
-    }
-    for (c, pb) in fill_groups {
-        if let Some(path) = pb.finish() {
-            pixmap.fill_path(&path, &paint(c), FillRule::Winding, xf, mask);
-        }
-    }
-    for (c, pb) in dot_groups {
-        if let Some(path) = pb.finish() {
-            pixmap.fill_path(&path, &paint(c), FillRule::Winding, xf, mask);
+    line_groups.into_iter()
+        .map(|(color, path)| (color, path, Some((1.0 / scale) as f32)))
+        .chain(fill_groups.into_iter().chain(dot_groups).map(|(color, path)| (color, path, None)))
+        .filter_map(|(color, path, stroke_width)| {
+            path.finish().map(|path| PaintPath { path, color, stroke_width })
+        })
+        .collect()
+}
+
+fn draw_paths(pixmap: &mut Pixmap, paths: &[PaintPath], xf: Transform, mask: Option<&Mask>) {
+    for path in paths {
+        let paint = paint(path.color);
+        if let Some(width) = path.stroke_width {
+            let stroke = Stroke { width, line_cap: LineCap::Round, line_join: LineJoin::Round, ..Default::default() };
+            pixmap.stroke_path(&path.path, &paint, &stroke, xf, mask);
+        } else {
+            pixmap.fill_path(&path.path, &paint, FillRule::Winding, xf, mask);
         }
     }
 }

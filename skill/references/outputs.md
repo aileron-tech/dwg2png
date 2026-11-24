@@ -104,3 +104,5 @@ coordinates are **tile-local** (origin at the tile's top-left).
 ```
 
 To map a tile-local label back to the full page: add the tile's `x`,`y`.
+
+With `--svg`, each PNG has a vector page at `img/fNN-pMM.svg`. The page dimensions match the PNG. Labels and tiles continue to reference the raster page.
