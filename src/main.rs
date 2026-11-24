@@ -2,6 +2,10 @@
 //!
 //! Usage:
 //!   dwg2png <file-or-dir> [more...] [--out DIR] [--font TTF] [--no-compare]
+//!   dwg2png --mcp      run the MCP server (separate program `dwg-mcp`)
+//!   dwg2png --apify    run the Apify Actor (separate program `dwg-apify`)
+
+mod plugin;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -118,9 +122,15 @@ fn rasterize_pdf(pdf: &Path, img_dir: &Path, stem: &str) -> Option<String> {
 }
 
 fn main() {
+    let mut cli = std::env::args().skip(1);
+    if let Some(companion) = cli.next().as_deref().and_then(plugin::plugin_for) {
+        let rest: Vec<String> = cli.collect();
+        std::process::exit(plugin::run(companion, &rest));
+    }
     let args = parse_args();
     if args.inputs.is_empty() {
         eprintln!("usage: dwg2png <file-or-dir>... [--out DIR] [--font TTF] [--size PX] [--no-compare]");
+        eprintln!("       dwg2png --mcp | --apify   (run the MCP server or the Apify Actor)");
         std::process::exit(1);
     }
     let opts = RenderOpts {

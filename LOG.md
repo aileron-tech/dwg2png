@@ -69,3 +69,24 @@ moved to the `aileron-tech` organization.
 
 **Verification:** Docs only; no code changed. No reference to the previous
 organization remains outside this log; relative links in the README resolve to existing files.
+
+## 2026-11-24 - Companion programs: `--mcp` and `--apify`
+
+**Goal:** Let the MCP server and the Apify Actor ship as separate programs
+(`dwg-mcp`, `dwg-apify`, each its own crate and repository, installable on its
+own) while `dwg2png --mcp` and `dwg2png --apify` stay the one entry point.
+
+**Changes:**
+- `src/plugin.rs`: maps the two flags to their programs, looks the program up
+  next to the executable and then on `PATH`, and hands the process over
+  (`exec` on Unix, spawn and wait elsewhere). A missing program prints the
+  install command and exits 127.
+- `src/main.rs`: checks the first argument for a companion flag before the
+  renderer's own argument parsing. The renderer CLI is otherwise unchanged.
+- First integration tests of the repository: `tests/companion_dispatch.rs`.
+
+**Verification:** PASS. `cargo test --release`: 8 existing unit tests, 2 new
+unit tests (REQ-CLI-001, 002) and 4 end-to-end tests that run the built binary
+against a stand-in companion (REQ-CLI-003 to 006). `cargo clippy` reports
+nothing in the new code; two older findings in `metadata.rs` and `text.rs` are
+left as they were.

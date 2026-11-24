@@ -134,6 +134,19 @@ docker compose run --rm dwg2png
 The font is set via `DWG2PNG_FONT` in the image; override with `--font` or a bind
 mount to use a different typeface.
 
+## Companion servers
+
+The MCP server and the Apify Actor are separate programs, installed on their
+own. Each depends on this crate as a library. `dwg2png` hands over to them:
+
+| Command | Runs | Repository |
+|---------|------|------------|
+| `dwg2png --mcp` | `dwg-mcp`, an MCP server over stdio | [aileron-tech/dwg-mcp](https://github.com/aileron-tech/dwg-mcp) |
+| `dwg2png --apify` | `dwg-apify`, an Apify Actor | [aileron-tech/dwg-apify](https://github.com/aileron-tech/dwg-apify) |
+
+The companion is looked up next to the `dwg2png` executable, then on `PATH`.
+When it is not installed, `dwg2png` prints the install command and exits 127.
+
 ## Agent skill
 
 The repo ships an agent skill under [`skill/`](skill/) that teaches a coding
