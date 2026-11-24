@@ -90,3 +90,10 @@ unit tests (REQ-CLI-001, 002) and 4 end-to-end tests that run the built binary
 against a stand-in companion (REQ-CLI-003 to 006). `cargo clippy` reports
 nothing in the new code; two older findings in `metadata.rs` and `text.rs` are
 left as they were.
+
+## 2026-11-24 - Install hint points at the companion's repository
+
+When a companion program is missing, `dwg2png --mcp` and `--apify` now print
+the link to its install instructions instead of a Homebrew command: each
+companion has its own tap and installers, documented in its README.
+Verified with `cargo test --release` (the four companion tests pass).

@@ -65,9 +65,8 @@ pub fn run(plugin: &Plugin, args: &[String]) -> i32 {
         eprintln!(
             "dwg2png: {} is a separate program, `{}`, and it is not installed.\n\
              Install it and run `dwg2png {}` again:\n  \
-             brew install aileron-tech/tap/{}\n  \
-             cargo install --git https://github.com/aileron-tech/{}",
-            plugin.purpose, plugin.program, plugin.flag, plugin.program, plugin.program
+             https://github.com/aileron-tech/{}#run-it",
+            plugin.purpose, plugin.program, plugin.flag, plugin.program
         );
         return 127;
     };

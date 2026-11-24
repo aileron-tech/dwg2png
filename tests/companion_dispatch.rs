@@ -60,7 +60,7 @@ fn missing_companion_is_reported() {
     assert_eq!(code, 127);
     assert_eq!(stdout, "");
     assert!(stderr.contains("dwg-mcp") && stderr.contains("not installed"), "{stderr}");
-    assert!(stderr.contains("brew install aileron-tech/tap/dwg-mcp"), "{stderr}");
+    assert!(stderr.contains("https://github.com/aileron-tech/dwg-mcp#run-it"), "{stderr}");
 }
 
 /* REQ-CLI-006: without a companion flag the renderer CLI still prints its usage */
