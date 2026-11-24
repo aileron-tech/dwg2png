@@ -1,19 +1,64 @@
 # dwg2png
 
-Pure-Rust **DWG &rarr; multipage PNG** renderer and **metadata indexer** for a
-SaaS backend that indexes DWG files. Parses native DWG (R13&ndash;R2018) with
-[`acadrust`](https://github.com/hakanaktt/acadrust) (MPL-2.0, no C deps), renders
-each layout (Model space + paper-space sheets) to PNG with
-[`tiny-skia`](https://github.com/RazrFalcon/tiny-skia) on the CPU, and extracts a
-searchable index document (layers, blocks, title-block attributes, text,
-layouts) as JSON.
+**DWG ingestion for AI applications.** dwg2png turns a binary AutoCAD DWG
+(R13-R2018) into files that a RAG pipeline, a search index or a
+vision-language model can use directly:
+
+| Output | What it holds | Use it for |
+|--------|---------------|------------|
+| `labels/*.json` | every label as exact text + pixel box, page, layer and color, read from the DWG (no OCR) | text embeddings, full-text search, grounded citations |
+| `json/*.json` | per-file index: layers, blocks, title-block attributes, text, layouts | structured filters and metadata search |
+| `tiles/*.png` + `tiles.json` | ~1500 px readable crops, each with the labels inside it | VLM input, image embeddings |
+| `img/*.png` | one PNG per layout (Model space + paper-space sheets) | previews, page-level context |
+
+One command takes a DWG, or a whole directory tree of them, to a folder of
+indexable files:
+
+```sh
+dwg2png drawings/ --out out --size 6000 --tiles
+```
+
+It ships as a single pure-Rust binary or an 81 MB container, and runs offline
+on the CPU. Native DWG is parsed with
+[`acadrust`](https://github.com/hakanaktt/acadrust) (MPL-2.0, no C deps) and
+rendered with [`tiny-skia`](https://github.com/RazrFalcon/tiny-skia).
 
 No GPL (LibreDWG avoided), no FFI, no GPU, no external CAD engine.
+
+## Use in AI pipelines (RAG, search, VLM)
+
+dwg2png turns an opaque binary DWG into retrievable, citable artifacts. Run the
+container as an ingestion step, then index its output:
+
+```
+DWG ──[dwg2png container]──▶  labels/*.json   (exact text + pixel bbox + page + layer)
+                              json/*.json     (per-file index: layers, blocks, attributes)
+                              tiles/*.png      (~1500px readable crops for VLM input)
+                              img/*.png        (full-page previews)
+```
+
+Two retrieval channels, both grounded:
+
+- **Text RAG (no OCR).** Each entry in `labels/*.json` is an exact string with a
+  pixel `x,y,w,h`, `page`, `layer`, and `color`. Embed labels (individually or
+  grouped by proximity/layer) and store the geometry as metadata. Retrieval is
+  lossless and every answer can cite the precise label location. The per-file
+  `json/*.json` adds title-block attributes (e.g. cadastral numbers, areas) and
+  the block/layer inventory as structured fields.
+- **Multimodal RAG.** Embed `tiles/*.png` (image embeddings) for visual queries;
+  each tile's `tiles.json` carries the labels inside that crop, so a retrieved
+  tile arrives with its text already extracted — feed both to a VLM.
+
+Why it fits RAG: the text is 100% accurate (straight from the DWG, no OCR drift),
+positionally grounded for citations, multimodal, deterministic, and fully
+offline. A practical chunking strategy: one chunk per label cluster (same layer,
+nearby bbox) with `{file, page, layer, bbox}` metadata; link clusters to their
+tile image for multimodal answers.
 
 ## Download
 
 Prebuilt binaries for macOS (Intel + Apple Silicon), Linux, and Windows are
-attached to each [release](https://github.com/diskd-ai/dwg2png/releases).
+attached to each [release](https://github.com/aileron-tech/dwg2png/releases).
 Download the archive for your platform, extract `dwg2png`, and run it.
 
 ```sh
@@ -89,6 +134,15 @@ docker compose run --rm dwg2png
 The font is set via `DWG2PNG_FONT` in the image; override with `--font` or a bind
 mount to use a different typeface.
 
+## Agent skill
+
+The repo ships an agent skill under [`skill/`](skill/) that teaches a coding
+agent to run dwg2png and consume its output:
+
+```sh
+npx skills add https://github.com/aileron-tech/dwg2png --skill dwg2png
+```
+
 ## Requirements & performance
 
 Measured in-container on real DWG 2018 files (full numbers in
@@ -104,36 +158,6 @@ Measured in-container on real DWG 2018 files (full numbers in
 
 Memory tracks **DWG size**, not render resolution — the parser holds the model
 in memory. Gate very large uploads or route them to a high-memory queue.
-
-## Use in RAG chains
-
-dwg2png turns an opaque binary DWG into retrievable, citable artifacts. Run the
-container as an ingestion step, then index its output:
-
-```
-DWG ──[dwg2png container]──▶  labels/*.json   (exact text + pixel bbox + page + layer)
-                              json/*.json     (per-file index: layers, blocks, attributes)
-                              tiles/*.png      (~1500px readable crops for VLM input)
-                              img/*.png        (full-page previews)
-```
-
-Two retrieval channels, both grounded:
-
-- **Text RAG (no OCR).** Each entry in `labels/*.json` is an exact string with a
-  pixel `x,y,w,h`, `page`, `layer`, and `color`. Embed labels (individually or
-  grouped by proximity/layer) and store the geometry as metadata. Retrieval is
-  lossless and every answer can cite the precise label location. The per-file
-  `json/*.json` adds title-block attributes (e.g. cadastral numbers, areas) and
-  the block/layer inventory as structured fields.
-- **Multimodal RAG.** Embed `tiles/*.png` (image embeddings) for visual queries;
-  each tile's `tiles.json` carries the labels inside that crop, so a retrieved
-  tile arrives with its text already extracted — feed both to a VLM.
-
-Why it fits RAG: the text is 100% accurate (straight from the DWG, no OCR drift),
-positionally grounded for citations, multimodal, deterministic, and fully
-offline. A practical chunking strategy: one chunk per label cluster (same layer,
-nearby bbox) with `{file, page, layer, bbox}` metadata; link clusters to their
-tile image for multimodal answers.
 
 ## Architecture (boundaries)
 
@@ -175,7 +199,7 @@ Run against 11 real DWG 2018 (AC1032) construction/survey files
 - **11/11 parsed, 23 pages rendered, 0 crashes.**
 - Parse 33&ndash;85 ms for typical files; the 46 MB file in ~20 s.
 - The corrupt/recovered file (bad header) **degraded to a placeholder via
-  failsafe instead of crashing** &mdash; the SaaS crash-isolation requirement.
+  failsafe instead of crashing** &mdash; safe for unattended batch ingestion.
 - Cyrillic text, layer colors, title-block attributes (e.g. cadastral numbers,
   areas) all extracted and rendered correctly.
 - Side-by-side vs a plotted reference PDF shows matching network topology,

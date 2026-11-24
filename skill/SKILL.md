@@ -18,15 +18,15 @@ into a RAG/VLM pipeline.
 
 Prefer the Docker image (self-contained, includes a font with broad script
 coverage); fall back to a release binary or building from source. Source repo:
-`diskd-ai/dwg2png`.
+`aileron-tech/dwg2png`.
 
 ```bash
 # A) Docker (build once from the repo)
-git clone https://github.com/diskd-ai/dwg2png && cd dwg2png
+git clone https://github.com/aileron-tech/dwg2png && cd dwg2png
 docker build -t dwg2png:latest .
 
 # B) Prebuilt binary (macOS arm64/x64, Linux x64, Windows x64)
-gh release download --repo diskd-ai/dwg2png --pattern '*linux*'
+gh release download --repo aileron-tech/dwg2png --pattern '*linux*'
 tar -xzf dwg2png-*-linux-gnu.tar.gz   # -> ./dwg2png
 
 # C) From source

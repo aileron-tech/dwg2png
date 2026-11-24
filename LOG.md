@@ -52,3 +52,20 @@ downscale on input, so raster resolution alone can't make all labels legible.
 **Verification:** PASS. Full batch at `--size 5000 --tiles`: 11/11 files,
 23 pages, 216 tiles, **128,410 position-referenced labels** (pipe-spec labels
 legible in tiles). 8 unit tests pass, 0 warnings.
+
+## 2026-11-24 - Reposition as DWG ingestion for AI applications
+
+**Goal:** Present the project as a DWG ingestion step for AI applications (RAG,
+search, VLM) instead of a renderer for one SaaS backend, after the repository
+moved to the `aileron-tech` organization.
+
+**Changes:**
+- README: new lead with an output-to-use table; the RAG section moved to the
+  top and renamed "Use in AI pipelines (RAG, search, VLM)"; new "Agent skill"
+  section with the install command.
+- README, `skill/README.md`, `skill/SKILL.md`: repository URLs now point to
+  `aileron-tech/dwg2png`.
+- GitHub repository description and topics updated to match.
+
+**Verification:** Docs only; no code changed. No reference to the previous
+organization remains outside this log; relative links in the README resolve to existing files.

@@ -1,12 +1,13 @@
 # dwg2png Skill
 
-> **Install:** `npx skills add https://github.com/diskd-ai/dwg2png --skill dwg2png` | [skills.sh](https://skills.sh)
+> **Install:** `npx skills add https://github.com/aileron-tech/dwg2png --skill dwg2png` | [skills.sh](https://skills.sh)
 >
-> Ships in the [`diskd-ai/dwg2png`](https://github.com/diskd-ai/dwg2png) tool repo under `skill/`.
+> Ships in the [`aileron-tech/dwg2png`](https://github.com/aileron-tech/dwg2png) tool repo under `skill/`.
 
-Render AutoCAD **DWG** drawings to multipage PNGs and extract a **lossless,
-position-referenced text layer** plus a metadata index — built for RAG/VLM
-ingestion and CAD content extraction. Pure-Rust, offline, no GPU or CAD engine.
+**DWG ingestion for AI applications.** Turn AutoCAD **DWG** drawings into
+multipage PNGs, readable tiles, a **lossless, position-referenced text layer**
+and a metadata index, ready for RAG, search and VLM pipelines. Pure-Rust,
+offline, no GPU or CAD engine.
 
 ---
 
@@ -45,11 +46,11 @@ This skill helps an agent run the `dwg2png` tool and consume its output:
 
 ```bash
 # Docker (self-contained; bundles a font)
-git clone https://github.com/diskd-ai/dwg2png && cd dwg2png
+git clone https://github.com/aileron-tech/dwg2png && cd dwg2png
 docker build -t dwg2png:latest .
 
 # or a prebuilt binary (macOS arm64/x64, Linux x64, Windows x64)
-gh release download --repo diskd-ai/dwg2png --pattern '*linux*'
+gh release download --repo aileron-tech/dwg2png --pattern '*linux*'
 ```
 
 ### Run
@@ -114,7 +115,7 @@ Embed `text`; keep `metadata` for filtering and grounded citations. Pair with th
 * **CLI reference**: [references/cli.md](references/cli.md)
 * **Output schemas**: [references/outputs.md](references/outputs.md)
 * **RAG integration**: [references/rag.md](references/rag.md)
-* **Source**: https://github.com/diskd-ai/dwg2png
+* **Source**: https://github.com/aileron-tech/dwg2png
 
 ---
 
